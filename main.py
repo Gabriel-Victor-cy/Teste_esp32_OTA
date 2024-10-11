@@ -143,7 +143,7 @@ deployment_code9 = 'AKfycbzOKvUxZ5sRAiqatzd-yuMH8qT4AKELip8I0O0SfraAXN8rSylQdl2Q
 row_data9 = {}
 
 def update_row_data9():
-    row_data9["var0"] = "Poli_Sem_fio_VS_code"
+    row_data9["var0"] = "Poli_Sem_fio_GIT_HUB"
 
 # Configurações iniciais
 def setup():
