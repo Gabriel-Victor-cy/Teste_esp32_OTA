@@ -4,11 +4,13 @@ import machine
 import urequests as requests  # Biblioteca para enviar requisições HTTP
 import ujson
 import gc  # Para liberar memória
-import random
+import os
 
-# Função alternativa para urlencode no MicroPython
-def urlencode(data):
-    return '&'.join('{}={}'.format(key, value) for key, value in data.items())
+# Versão atual do código
+VERSION = "1.0.0"
+
+# URL para baixar o novo código OTA
+OTA_URL = "https://raw.githubusercontent.com/Gabriel-Victor-cy/Teste_esp32_OTA/main/main.py"
 
 # Função para conectar ao Wi-Fi
 def connect_wifi(ssid, password=None):
@@ -40,7 +42,6 @@ def connect_wifi(ssid, password=None):
 # Função para autenticar no captive portal (se necessário)
 def authenticate_captive_portal(login_url, username, password):
     try:
-        # Dados que serão enviados no login (agora como um formulário codificado)
         payload = {
             "auth_user": username,
             "auth_pass": password,
@@ -48,9 +49,7 @@ def authenticate_captive_portal(login_url, username, password):
             "zone": "cpzone",
             "accept": "Entrar"
         }
-        # Codifica os dados como `application/x-www-form-urlencoded`
         payload_encoded = urlencode(payload)
-        
         print(f"Autenticando no captive portal: {login_url}")
         headers = {
             "Host": "semfio.poli.usp.br:8003",
@@ -73,22 +72,78 @@ def authenticate_captive_portal(login_url, username, password):
     except Exception as e:
         print(f"Erro ao autenticar no portal captive: {e}")
 
-# Função para enviar número aleatório para a planilha
+# Função para enviar dados para a planilha
 def post_data(row_data, deployment_code):
     try:
         request_data = ujson.dumps({"parameters": row_data})
         r = requests.post("https://script.google.com/macros/s/" + deployment_code + "/exec", headers = {"content-type": "application/json"}, data = request_data)
-        #print(f"Response: {r.text}")
         r.close()
     except Exception as e:
         print(f"Error posting data: {e}")
+
+# Função para verificar se o código OTA contém uma versão nova
+def check_version(new_code):
+    # Procura a linha que contém a versão no novo código
+    for line in new_code.split("\n"):
+        if line.startswith("VERSION = "):
+            new_version = line.split("=")[1].strip().strip('"')
+            if new_version != VERSION:
+                print(f"Nova versão encontrada: {new_version}")
+                return True
+            else:
+                print("O código já está atualizado. Nenhuma ação necessária.")
+                return False
+    print("Nenhuma versão encontrada no código OTA.")
+    return False
+
+# Função OTA para baixar o novo código
+def download_new_code(url):
+    try:
+        response = requests.get(url)
+        if response.status_code == 200:
+            new_code = response.text
+            if check_version(new_code):  # Verifica se há uma nova versão
+                with open("/new_main.py", "w") as f:
+                    f.write(new_code)
+                print("Novo código baixado com sucesso!")
+            else:
+                print("Nenhuma atualização OTA necessária.")
+            response.close()
+        else:
+            print(f"Falha ao baixar o código. Status code: {response.status_code}")
+            response.close()
+    except Exception as e:
+        print(f"Erro ao tentar baixar o código: {e}")
+
+# Função para aplicar o novo código e reiniciar
+def apply_new_code():
+    try:
+        if os.path.exists("/new_main.py"):
+            os.rename("/main.py", "/old_main.py")  # Backup do código antigo
+            os.rename("/new_main.py", "/main.py")  # Aplica o novo código
+            print("Novo código aplicado com sucesso! Reiniciando...")
+            machine.reset()  # Reinicia a ESP32 para executar o novo código
+        else:
+            print("Nenhum novo código para aplicar.")
+    except Exception as e:
+        print(f"Erro ao aplicar o novo código: {e}")
+
+# Função para verificar e aplicar OTA
+def check_for_ota_update():
+    print("Verificando se há atualizações OTA...")
+    download_new_code(OTA_URL)  # Baixa o novo código
+    apply_new_code()  # Aplica o novo código e reinicia a ESP32, se houver
+
+# Função alternativa para urlencode no MicroPython
+def urlencode(data):
+    return '&'.join('{}={}'.format(key, value) for key, value in data.items())
 
 deployment_code9 = 'AKfycbzOKvUxZ5sRAiqatzd-yuMH8qT4AKELip8I0O0SfraAXN8rSylQdl2QJdGw2haK9IYK'
 
 row_data9 = {}
 
 def update_row_data9():
-    row_data9["var0"] = "Poli_Sem_fio"
+    row_data9["var0"] = "Poli_Sem_fio_VS_code"
 
 # Configurações iniciais
 def setup():
@@ -103,16 +158,17 @@ def setup():
 
         authenticate_captive_portal(login_url, username, portal_password)
         
-        # Enviar 10 números aleatórios para a planilha após conexão e autenticação
+        # Enviar dados para a planilha após conexão e autenticação
         for count in range(10):
             update_row_data9()
             post_data(row_data9, deployment_code9)
 
+        # Verifica se há uma atualização OTA disponível
+        check_for_ota_update()
+
 # Loop principal
 def loop():
     while True:
-        # Aqui você pode adicionar o código que deseja repetir continuamente
-       # print("ESP32 funcionando...")  # Apenas para teste
         time.sleep(5)  # Aguarda 5 segundos
 
 # Executa o setup e o loop
