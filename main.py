@@ -7,7 +7,7 @@ import gc  # Para liberar memória
 import os
 
 # Versão atual do código
-VERSION = "1.0.1"
+VERSION = "1.0.2"
 
 # URL para baixar o novo código OTA
 OTA_URL = "https://raw.githubusercontent.com/Gabriel-Victor-cy/Teste_esp32_OTA/main/main.py"
@@ -152,7 +152,7 @@ deployment_code9 = 'AKfycbzOKvUxZ5sRAiqatzd-yuMH8qT4AKELip8I0O0SfraAXN8rSylQdl2Q
 row_data9 = {}
 
 def update_row_data9():
-    row_data9["var0"] = "Poli_Sem_fio_Git_hub"
+    row_data9["var0"] = "Poli_Sem_fio_Git_hub_V2"
 
 # Configurações iniciais
 def setup():
