@@ -166,14 +166,14 @@ def setup():
         portal_password = "pE8GpJKVjvrA"  # Sua senha do portal
 
         authenticate_captive_portal(login_url, username, portal_password)
-        
+        # Verifica se há uma atualização OTA disponível
+        check_for_ota_update()        
         # Enviar dados para a planilha após conexão e autenticação
         for count in range(10):
             update_row_data9()
             post_data(row_data9, deployment_code9)
 
-        # Verifica se há uma atualização OTA disponível
-        check_for_ota_update()
+
 
 # Loop principal
 def loop():
