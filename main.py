@@ -9,7 +9,7 @@ import os
 # -------------------------------------------------------------
 # Versão atual do firmware (altere se subir uma nova versão)
 # -------------------------------------------------------------
-VERSION = "1.0.3"
+VERSION = "1.0.0"
 
 # -------------------------------------------------------------
 # URL do código OTA (raw GitHub ou outra fonte).
