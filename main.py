@@ -9,7 +9,7 @@ import os
 # -------------------------------------------------------------
 # Versão atual do firmware (altere se subir uma nova versão)
 # -------------------------------------------------------------
-VERSION = "1.0.2"
+VERSION = "1.0.3"
 
 # -------------------------------------------------------------
 # URL do código OTA (raw GitHub ou outra fonte).
@@ -124,23 +124,47 @@ class SHT21:
         hum = -6 + (125.0 * raw_value / 65536.0)
         return hum
 
-
 # -------------------------------------------------------------
-# 3) Configuração de I2C e objeto do sensor
+# 3) Configuração de I2C e objetos dos sensores
 # -------------------------------------------------------------
 i2c = machine.I2C(1, scl=machine.Pin(22), sda=machine.Pin(21), freq=100000)
 sht21_sensor = SHT21(i2c=i2c, address=0x40)
 
 # -------------------------------------------------------------
+# 3.1) Sensor CCS811 (CO2) em 0x5A
+# -------------------------------------------------------------
+try:
+    from ccs811 import CCS811  # Biblioteca para CCS811 em MicroPython
+    # import adafruit_ccs811  # Se estiver usando a versão CircuitPython
+    ccs811_sensor = CCS811(i2c=i2c, addr=0x5A)
+    ccs811_enabled = True
+    print("Sensor CCS811 inicializado com sucesso.")
+except Exception as e:
+    print("Erro ao inicializar CCS811:", e)
+    ccs811_enabled = False
+
+# -------------------------------------------------------------
+# 3.2) Sensor BME280 (Pressão) em 0x76
+# -------------------------------------------------------------
+try:
+    import bme280  # Biblioteca bme280.py precisa estar no sistema de arquivos
+    # Caso esteja usando "from bme280 import BME280", ajuste a criação do objeto.
+    bme = bme280.BME280(i2c=i2c, address=0x76)
+    bme280_enabled = True
+    print("Sensor BME280 inicializado com sucesso.")
+except Exception as e:
+    print("Erro ao inicializar BME280:", e)
+    bme280_enabled = False
+
+# -------------------------------------------------------------
 # 4) Google Apps Script (deployment_code)
 # -------------------------------------------------------------
-deployment_code = 'AKfycbzOKvUxZ5sRAiqatzd-yuMH8qT4AKELip8I0O0SfraAXN8rSylQdl2QJdGw2haK9IYK'
+deployment_code = 'AKfycbxarLqDmbOGlEjl5f7PJDKxMs5O8V0xHF0Ct32wJSDNgW46VRHW4B1ePruoeM38L5DNlQ'
 
 # -------------------------------------------------------------
 # 5) Funções OTA
 # -------------------------------------------------------------
 def file_exists(filepath):
-    """Verifica se um arquivo existe no sistema de arquivos MicroPython."""
     try:
         os.stat(filepath)
         return True
@@ -148,12 +172,6 @@ def file_exists(filepath):
         return False
 
 def check_version(new_code):
-    """
-    Verifica se o new_code (string) contém uma linha como:
-    VERSION = "x.x.x"
-    e compara com a VERSION atual do firmware.
-    Retorna True se for diferente (ou seja, se há nova versão).
-    """
     for line in new_code.split("\n"):
         if line.startswith("VERSION = "):
             new_version = line.split("=")[1].strip().strip('"')
@@ -167,13 +185,11 @@ def check_version(new_code):
     return False
 
 def download_new_code(url):
-    """Faz GET no URL. Se status 200, checa a versão. Se for nova, salva em /new_main.py."""
     try:
         print("Baixando novo código OTA de:", url)
         response = requests.get(url)
         if response.status_code == 200:
             new_code = response.text
-            # Verifica se há versão diferente
             if check_version(new_code):
                 with open("/new_main.py", "w") as f:
                     f.write(new_code)
@@ -188,10 +204,6 @@ def download_new_code(url):
         print(f"Erro ao tentar baixar o código OTA: {e}")
 
 def apply_new_code():
-    """
-    Se /new_main.py existir, remove /main.py (se houver)
-    e renomeia /new_main.py para /main.py, reiniciando em seguida.
-    """
     try:
         if file_exists("/new_main.py"):
             if file_exists("/main.py"):
@@ -205,7 +217,6 @@ def apply_new_code():
         print(f"Erro ao aplicar o novo código: {e}")
 
 def check_for_ota_update():
-    """Fluxo completo: Baixa o código e aplica, se necessário."""
     print("Verificando se há atualizações OTA...")
     download_new_code(OTA_URL)
     apply_new_code()
@@ -231,31 +242,70 @@ def setup():
 
 def loop():
     """
-    Lê temp/umidade do SHT21 e envia para o Apps Script a cada 5 segundos.
-    Caso queira checar OTA periodicamente, poderíamos chamar check_for_ota_update()
-    dentro deste loop, mas estaria sujeito a resets no meio do funcionamento.
+    Lê Temp/Umidade do SHT21, CO2 do CCS811 (se disponível),
+    Pressão (e possivelmente Temp/Umid) do BME280, e envia para o Apps Script a cada 5s.
     """
     while True:
+        row_data = {}
+
+        # 1) Ler SHT21
         try:
-            # Ler sensor
             temperatura = sht21_sensor.read_temperature()  # °C
             umidade     = sht21_sensor.read_humidity()     # %
+            print("Temperatura (°C) [SHT21]:", temperatura)
+            print("Umidade (%) [SHT21]:", umidade)
 
-            print("Temperatura (°C):", temperatura)
-            print("Umidade (%):", umidade)
+            #row_data["Temperatura"] = round(temperatura, 2)
+            #row_data["Umidade"]     = round(umidade, 2)
+        except Exception as e:
+            print("Erro SHT21:", e)
 
-            # Montar dados e enviar
-            row_data = {}
-            row_data["Temperatura"] = round(temperatura, 2)
-            row_data["Umidade"]     = round(umidade, 2)
+        # 2) Ler CCS811 (CO2)
+        if ccs811_enabled:
+            try:
+                if ccs811_sensor.data_ready():
+                    co2_ppm = ccs811_sensor.eCO2
+                    # tvoc_ppb = ccs811_sensor.tVOC  # se precisar
+                    print("CO2 (ppm) [CCS811]:", co2_ppm)
+                    #row_data["CO2_ppm"] = co2_ppm
+                else:
+                    print("CCS811 ainda não está pronto para leitura.")
+            except Exception as e:
+                print("Erro CCS811:", e)
+        # 3) Ler BME280 (Temp, Pressão, Umidade)
+        if bme280_enabled:
+            try:
+                temp_str  = bme.temperature   # Ex: "25.32C"
+                press_str = bme.pressure     # Ex: "1013.10hPa"
+                #hum_str   = bme.humidity     # Ex: "45.23%"
 
+                # Converter para número:
+                temp_val  = float(temp_str[:-1])
+                press_val = float(press_str.replace('hPa',''))
+                #hum_val   = float(hum_str.replace('%',''))
+
+                print("BME280 -> T=%.2f °C  P=%.2f hPa" % (temp_val, press_val))
+                #print("BME280 -> P=%.2f hPa   %%" % (press_val))
+
+                # Enviar para o dicionário (ou como preferir)
+                #row_data["Temperatura_BME"] = temp_val
+                #row_data["Pressao_hPa"]     = press_val
+                #row_data["Umidade_BME"]     = hum_val
+
+            except Exception as e:
+                print("Erro BME280:", e)
+        
+        row_data["Temperatura"] = round(temperatura, 2)
+        row_data["Umidade"]     = round(umidade, 2)
+        row_data["CO2_ppm"] 	= co2_ppm
+        row_data["Temperatura_BME"] = temp_val
+        row_data["Pressao_hPa"]     = press_val
+        
+        # Enviar ao Google Sheets
+        if row_data:
             post_data(row_data, deployment_code)
 
-        except Exception as e:
-            print("Erro na leitura/envio do sensor:", e)
-
         time.sleep(5)
-
 
 # -------------------------------------------------------------
 # 7) Execução principal
@@ -263,4 +313,6 @@ def loop():
 setup()
 while True:
     loop()
+
+
 
